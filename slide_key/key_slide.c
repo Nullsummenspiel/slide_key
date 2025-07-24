@@ -58,42 +58,66 @@ char slide_debug_str2[] = "slide judge:%x val:%x\n";
 AT(.com_text.bsp.key.str)
 char slide_debug_str3[] = "slide judge:%x %x\n";
 
-AT(.com_text.bsp.key)
+T(.com_text.bsp.key)
 u16 bsp_key_slide_judge(void)
 {
     u16 time_diff[TOUCH_NUM];
     u16 velocity[TOUCH_NUM-1];
-    u16 velocity_last;
+    u16 velocity_last = 0;
     u32 velocity_total_diff = 0;
-    for(u8 i = 0; i < TOUCH_NUM; i++) {
-        time_diff[i] = SLIDE_TICK_SUB(slide_key.release_tick[i], slide_key.push_tick[i]);
+    u8 i = slide_key.first_push_idx ? TOUCH_NUM-1 : 0;
+    while(i < TOUCH_NUM) {
+        time_diff[i] = SLIDE_TICK_DIFF_ABS(slide_key.release_tick[i], slide_key.push_tick[i]);
+        printf(slide_debug_str2, __LINE__, time_diff[i]);
         if((time_diff[i] < slide_key_api.time_diff_min[i]) || (time_diff[i] > slide_key_api.time_diff_max[i])) {
-            printf(slide_debug_str2, __LINE__, time_diff[i]);
             printf(slide_debug_str3, slide_key.release_tick[i], slide_key.push_tick[i]);
             return NO_KEY;
         }
         if(i != 0) {
-            if(SLIDE_TICK_SUB(slide_key.release_tick[i], slide_key.release_tick[i-1])) {
-                velocity[i-1] = (((u16)slide_key_api.distance[i-1])<<8)/SLIDE_TICK_SUB(slide_key.release_tick[i], slide_key.release_tick[i-1]);
-                velocity[i-1] = velocity[i-1]>>8;
-            }
-            if((velocity[i-1] < slide_key_api.velo_min[i-1]) || (velocity[i-1] > slide_key_api.velo_max[i-1])) {
+            if(!slide_key.first_push_idx) {
+                if(SLIDE_TICK_DIFF_ABS(slide_key.release_tick[i], slide_key.release_tick[i-1])) {
+                    velocity[i-1] = ((slide_key_api.distance[i-1]))/SLIDE_TICK_DIFF_ABS(slide_key.release_tick[i], slide_key.release_tick[i-1]);
+                    printf(slide_debug_str2, __LINE__, velocity[i-1]);
+                    printf(slide_debug_str3, slide_key_api.distance[i-1], SLIDE_TICK_DIFF_ABS(slide_key.release_tick[i], slide_key.release_tick[i-1]));
+                }
                 printf(slide_debug_str2, __LINE__, velocity[i-1]);
-                return NO_KEY;
-            }
-            if(velocity_last) {
-                u16 vole_diff = abs_s(velocity[i-1]-velocity_last);
-                if(vole_diff > slide_key_api.velo_diff_max[i-2]) {
-                    printf(slide_debug_str2, __LINE__, vole_diff);
+                if((velocity[i-1] < slide_key_api.velo_min[i-1]) || (velocity[i-1] > slide_key_api.velo_max[i-1])) {
                     return NO_KEY;
                 }
-                velocity_total_diff += vole_diff;
+                if(velocity_last) {
+                    u16 vole_diff = abs_s(velocity[i-1]-velocity_last);
+                    printf(slide_debug_str2, __LINE__, vole_diff);
+                    if(vole_diff > slide_key_api.velo_diff_max[i-2]) {
+                        return NO_KEY;
+                    }
+                    velocity_total_diff += vole_diff;
+                }
+                velocity_last = velocity[i-1];
+            } else {
+                if(SLIDE_TICK_DIFF_ABS(slide_key.release_tick[i-1], slide_key.release_tick[i])) {
+                    velocity[i-1] = ((slide_key_api.distance[i-1]))/SLIDE_TICK_DIFF_ABS(slide_key.release_tick[i-1], slide_key.release_tick[i]);
+                    printf(slide_debug_str2, __LINE__, velocity[i-1]);
+                    printf(slide_debug_str3, slide_key_api.distance[i-1], SLIDE_TICK_DIFF_ABS(slide_key.release_tick[i-1], slide_key.release_tick[i]));
+                }
+                printf(slide_debug_str2, __LINE__, velocity[i-1]);
+                if((velocity[i-1] < slide_key_api.velo_min[i-1]) || (velocity[i-1] > slide_key_api.velo_max[i-1])) {
+                    return NO_KEY;
+                }
+                if(velocity_last) {
+                    u16 vole_diff = abs_s(velocity[i-1]-velocity_last);
+                    printf(slide_debug_str2, __LINE__, vole_diff);
+                    if(vole_diff > slide_key_api.velo_diff_max[i-1]) {
+                        return NO_KEY;
+                    }
+                    velocity_total_diff += vole_diff;
+                }
+                velocity_last = velocity[i-1];
             }
-            velocity_last = velocity[i-1];
         }
+        i = slide_key.first_push_idx ? i-1 : i+1;
     }
+    printf(slide_debug_str2, __LINE__, velocity_total_diff);
     if(slide_key_api.velo_diff_total_max < velocity_total_diff) {
-        printf(slide_debug_str2, __LINE__, velocity_total_diff);
         return NO_KEY;
     }
     if(slide_key.first_push_idx == 0) {
